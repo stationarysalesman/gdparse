@@ -18,14 +18,109 @@ count-based data on mutations.
 Precondition: Correctly formatted Genomediff files with tab-separated fields."""
 
 
-def parse_files(cat_map, input_dir, output_dir):
+def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
+    """Parse information from .gd files into a map organized by CDS."""
+
+    # Define string constants
+    err_no_plasmid = "Error: no plasmid file found: "
+
+    # Enumerated lists
+    cfp_genes = ("Bba_E0020")
+    yfp_genes = ("Bba_E0030", "Bba_K592101", "Bba_K864100")
+    bfp_genes = ("Bba_K592100")
+
+    # Map genes to category (this can be moved in future versions)
+    gene_map = dict()
+    for item in cfp_genes:
+        gene_map[item.lower()] = "CFP"
+    for item in yfp_genes:
+        gene_map[item.lower()] = "YFP"
+    for item in bfp_genes:
+        gene_map[item.lower()] = "BFP"
 
     for dirName, subdirList, fileList in os.walk(input_dir):
         print subdirList
         for gdFile in fileList:
+
             with open(input_dir+gdFile, "r") as data:
+                # Obtain a SeqRecord containing all info from Genbank file
+                first_line = data.readline()
+                second_line = data.readline()
+                if not(second_line): # no mutations
+                    return
+                ref_seq_name = re.split("\t", second_line)[3]
+                current_record = SeqIO.read(plasmid_dir+ref_seq_name+".gb", "genbank")
+                if not(current_record):
+                    print err_no_plasmid + ref_seq_name + "\n"
+                    continue
+
+                current_record_features = current_record.features
+
+                # Gather information common to all mutations in this .gd file
+
+                # Filter by strand (no duplicate features)
+                top_strand_features = filter(item.strand == "1" for item in current_record_features)
+
+                # Get type of CDS
+                cds = filter(feat.type == "CDS" for feat in top_strand_features)
+                cds_id = cds.qualifiers['label']
+                cds_category = gene_map[cds_id]
+
+                # Use this for all further count updates
+                mutation_map = cat_map[cds_category]
+
                 for line in data:
-                    print line
+                    # Update total count
+                    mutation_map.update_count()
+
+                    split_line = re.split("\t", line)
+
+                    # Common fields
+                    mut_type = split_line[0]
+                    ref_seq = split_line[3] # Plasmid sequence name
+
+                    # Unique fields
+                    position = ""
+                    size = ""
+                    repeat_seq = ""
+                    repeat_length = ""
+                    repeat_ref_num = ""
+                    repeat_new_copies = ""
+                    repeat_name = ""
+                    strand = ""
+                    # duplication_size = ""
+
+                    # Update count based on mutation type
+                    mutation_map.update_type_count(mut_type)
+
+                    if ("MC" in mut_type): # Missing coverage follows unique format
+                        #code to handle missing coverage to appear in later versions
+                        pass
+
+                    position = split_line[4]
+
+                    # Update count based on feature (precondition: mutation has position)
+                    # TODO: use FeatureLocation.start and .end to form sequence and check if mutation is positioned within
+                    # Determine category
+
+                    if ("SNP" in mut_type):
+                         new_seq = split_line[5]
+
+
+    return
+
+
+"""Map individual reference sequences onto their respective category.
+
+
+@:arg plasmid_dir: the directory containing reference sequence files
+@:arg type: string specifying how to map reference files"""
+
+
+def get_genbank_info(handle):
+
+    # Map reference sequences onto CDS categories
+    genbank_record = SeqIO.read(handle, "genbank")
 
     return
 """This Python script provides an interactive interface to a program that uses GenomeDiffSequenceMap objects.
@@ -52,6 +147,7 @@ def main():
     # Category defaults (add more in later version)
     cds_categories = ("YFP", "BFP", "CFP")
 
+
     # Begin workflow
     print opening_message
     print query_categorize
@@ -68,11 +164,24 @@ def main():
             done = True
         else:
             print err_bad_category
+
+    done = False
+    while not(done):
+        plasmid_dir = input("Please specify the plasmid directory path.\n")
+        if not(os.access(plasmid_dir, os.F_OK)):
+            print err_input_dir_noexist
+            continue
+        if not(os.access(plasmid_dir, os.EX_OK)):
+            print err_input_dir_noaccess
+            continue
+        else:
+            done = True
+
     done = False
     while not(done):
         user_input_dir = input("Please enter the input directory path.\n")
         # Check existence and access
-        print "Entered", str(user_input_dir)
+
         if not(os.access(user_input_dir, os.F_OK)):
             print err_input_dir_noexist
             continue
@@ -110,7 +219,7 @@ def main():
             cat_map[category] = GenomeDiffSequenceMap()
         print "done."
         print "Parsing genomediff files.\n"
-        parse_files(cat_map, user_input_dir, user_output_dir)
+        parse_files_cds(cat_map, user_input_dir, user_output_dir, plasmid_dir)
 
 
     return
