@@ -104,7 +104,7 @@ def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
                         #code to handle missing coverage to appear in later versions
                         pass
 
-                    position = split_line[4]
+                    position = int(split_line[4])
 
                     # Update count based on feature (precondition: mutation has position)
                     containing_feature = filter(lambda feat: position in feat.location, top_strand_features)[0]
@@ -161,6 +161,11 @@ def main():
     # Category defaults (add more in later version)
     cds_categories = ("YFP", "BFP", "CFP")
 
+    # Defaults for user input
+    INPUT_DIR_DEFAULT = "genomediff/"
+    OUTPUT_DIR_DEFAULT = "output/"
+    PLASMID_DIR_DEFAULT = "plasmids/"
+
 
     # Begin workflow
     print opening_message
@@ -179,20 +184,31 @@ def main():
             print err_bad_category
 
     done = False
+    user_plasmid_dir = ""
     while not(done):
-        plasmid_dir = raw_input("Please specify the plasmid directory path.\n")
-        if not(os.access(plasmid_dir, os.F_OK)):
+        user_input = raw_input("Please specify the plasmid directory path.\n1. Default directory (local)\n2. Custom\n")
+        if (user_input == "1"):
+            user_plasmid_dir = PLASMID_DIR_DEFAULT
+            done = True
+            continue
+
+        if not(os.access(user_plasmid_dir, os.F_OK)):
             print err_input_dir_noexist
             continue
-        if not(os.access(plasmid_dir, os.EX_OK)):
+        if not(os.access(user_plasmid_dir, os.EX_OK)):
             print err_input_dir_noaccess
             continue
         else:
             done = True
 
     done = False
+    user_input_dir = ""
     while not(done):
-        user_input_dir = raw_input("Please enter the input directory path.\n")
+        user_input = raw_input("Please enter the input directory path.\n1. Default directory (local)\n2. Custom\n")
+        if (user_input == "1"):
+            user_input_dir = INPUT_DIR_DEFAULT
+            done = True
+            continue
         # Check existence and access
 
         if not(os.access(user_input_dir, os.F_OK)):
@@ -205,8 +221,14 @@ def main():
             done = True
 
     done = False
+    user_output_dir = ""
     while not(done):
-        user_output_dir = raw_input("Please enter the output directory path.\n")
+        user_input = raw_input("Please enter the output directory path.\n1. Default directory (local)\n2. Custom\n")
+        if (user_input == "1"):
+            user_output_dir = OUTPUT_DIR_DEFAULT
+            done = True
+            continue
+
         if (os.access(user_output_dir, os.F_OK)):
             ans_done = False
             while not(ans_done):
@@ -232,7 +254,7 @@ def main():
             cat_map[category] = GenomeDiffSequenceMap()
         print "done."
         print "Parsing genomediff files.\n"
-        new_map = parse_files_cds(cat_map, user_input_dir, user_output_dir, plasmid_dir)
+        new_map = parse_files_cds(cat_map, user_input_dir, user_output_dir, user_plasmid_dir)
         total_count = 0
         for k in new_map.keys():
             total_count += new_map[k].get_count()
