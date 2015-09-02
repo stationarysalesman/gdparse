@@ -25,9 +25,9 @@ def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
     err_no_plasmid = "Error: no plasmid file found: "
 
     # Enumerated lists
-    cfp_genes = ("Bba_E0020")
-    yfp_genes = ("Bba_E0030", "Bba_K592101", "Bba_K864100")
-    bfp_genes = ("Bba_K592100")
+    cfp_genes = ("bba_e0020")
+    yfp_genes = ("bba_e0030", "bba_k592101", "bba_k864100")
+    bfp_genes = ("bba_k592100")
 
     # Map genes to category (this can be moved in future versions)
     gene_map = dict()
@@ -38,17 +38,24 @@ def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
     for item in bfp_genes:
         gene_map[item.lower()] = "BFP"
 
+    print "Scanning input directory..."
+    file_count = 0
     for dirName, subdirList, fileList in os.walk(input_dir):
-        print subdirList
+        for f in fileList:
+            file_count +=1
+    print "Found", file_count, "files."
+    print "Processing files:"
+    for dirName, subdirList, fileList in os.walk(input_dir):
         for gdFile in fileList:
-
             with open(input_dir+gdFile, "r") as data:
+                print gdFile, "...\r"
                 # Obtain a SeqRecord containing all info from Genbank file
                 first_line = data.readline()
                 second_line = data.readline()
                 if not(second_line): # no mutations
-                    return
-                ref_seq_name = re.split("\t", second_line)[3]
+                    print "No mutations."
+                    continue
+                ref_seq_name = (re.split("\t", second_line)[3]).lower()
                 current_record = SeqIO.read(plasmid_dir+ref_seq_name+".gb", "genbank")
                 if not(current_record):
                     print err_no_plasmid + ref_seq_name + "\n"
@@ -59,11 +66,11 @@ def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
                 # Gather information common to all mutations in this .gd file
 
                 # Filter by strand (no duplicate features)
-                top_strand_features = filter(item.strand == "1" for item in current_record_features)
+                top_strand_features = filter(lambda item: item.strand == 1, current_record_features)
 
                 # Get type of CDS
-                cds = filter(feat.type == "CDS" for feat in top_strand_features)
-                cds_id = cds.qualifiers['label']
+                cds = filter(lambda feat: feat.type == "CDS", top_strand_features)[0]
+                cds_id = cds.qualifiers['label'][0].lower()
                 cds_category = gene_map[cds_id]
 
                 # Use this for all further count updates
@@ -91,7 +98,7 @@ def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
                     # duplication_size = ""
 
                     # Update count based on mutation type
-                    mutation_map.update_type_count(mut_type)
+                    mutation_map.update_type_map(mut_type)
 
                     if ("MC" in mut_type): # Missing coverage follows unique format
                         #code to handle missing coverage to appear in later versions
@@ -100,14 +107,21 @@ def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
                     position = split_line[4]
 
                     # Update count based on feature (precondition: mutation has position)
-                    # TODO: use FeatureLocation.start and .end to form sequence and check if mutation is positioned within
-                    # Determine category
+                    containing_feature = filter(lambda feat: position in feat.location, top_strand_features)[0]
+                    containing_feature_type = containing_feature.type
+                    mutation_map.update_feature_map(containing_feature_type)
 
-                    if ("SNP" in mut_type):
-                         new_seq = split_line[5]
+                    # Update other counts based on detailed mappings
+                    mutation_map.update_type_feat_map(mut_type, containing_feature_type)
+                    mutation_map.update_feat_type_map(containing_feature_type, mut_type)
+
+                    print "Done."
+                # Outside loop: update map
+                cat_map[cds_category] = mutation_map
 
 
-    return
+    print cat_map.keys()
+    return cat_map
 
 
 """Map individual reference sequences onto their respective category.
@@ -160,14 +174,13 @@ def main():
             print err_bad_category
             continue
         elif (cat_num == 1):
-            print "yay"
             done = True
         else:
             print err_bad_category
 
     done = False
     while not(done):
-        plasmid_dir = input("Please specify the plasmid directory path.\n")
+        plasmid_dir = raw_input("Please specify the plasmid directory path.\n")
         if not(os.access(plasmid_dir, os.F_OK)):
             print err_input_dir_noexist
             continue
@@ -179,7 +192,7 @@ def main():
 
     done = False
     while not(done):
-        user_input_dir = input("Please enter the input directory path.\n")
+        user_input_dir = raw_input("Please enter the input directory path.\n")
         # Check existence and access
 
         if not(os.access(user_input_dir, os.F_OK)):
@@ -193,11 +206,11 @@ def main():
 
     done = False
     while not(done):
-        user_output_dir = input("Please enter the output directory path.\n")
+        user_output_dir = raw_input("Please enter the output directory path.\n")
         if (os.access(user_output_dir, os.F_OK)):
             ans_done = False
             while not(ans_done):
-                ans = input("Error: output directory exists. Overwrite contents? [Y/n]: ")
+                ans = raw_input("Error: output directory exists. Overwrite contents? [Y/n]: ")
                 if "y" in ans.lower():
                     ans_done = True
                     done = True
@@ -219,13 +232,18 @@ def main():
             cat_map[category] = GenomeDiffSequenceMap()
         print "done."
         print "Parsing genomediff files.\n"
-        parse_files_cds(cat_map, user_input_dir, user_output_dir, plasmid_dir)
+        new_map = parse_files_cds(cat_map, user_input_dir, user_output_dir, plasmid_dir)
+        total_count = 0
+        for k in new_map.keys():
+            total_count += new_map[k].get_count()
+
+        print "total count:", total_count
 
 
     return
 
-
-main()
+if __name__ == "__main__":
+    main()
 
 
 

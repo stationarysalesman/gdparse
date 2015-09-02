@@ -44,6 +44,10 @@ class GenomeDiffSequenceMap:
                 self.feat_type_map[feat][mut_type] = 0
         return
 
+    def get_count(self):
+        return self.total_count
+    def output(self):
+        return "todo: implement output generator"
     def update_count(self):
         self.total_count += 1
         return
