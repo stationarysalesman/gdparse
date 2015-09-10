@@ -23,12 +23,13 @@ def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
 
     # Define string constants
     err_no_plasmid = "Error: no plasmid file found: "
+    err_no_cds = "Error: no cds found in current template."
 
     # Enumerated lists
-    cfp_genes = ("bba_e0020")
+    cfp_genes = ("bba_e0020",)
     yfp_genes = ("bba_e0030", "bba_k592101", "bba_k864100")
-    bfp_genes = ("bba_k592100")
-
+    bfp_genes = ("bba_k592100",)
+    cds_tuple = tuple(tuple(cfp_genes) + tuple(yfp_genes) + tuple(bfp_genes))
     # Map genes to category (this can be moved in future versions)
     gene_map = dict()
     for item in cfp_genes:
@@ -69,7 +70,11 @@ def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
                 top_strand_features = filter(lambda item: item.strand == 1, current_record_features)
 
                 # Get type of CDS
-                cds = filter(lambda feat: feat.type == "CDS", top_strand_features)[0]
+                cds = filter(lambda feat: feat.type == "CDS" and (feat.qualifiers['label'][0]).lower() in cds_tuple, top_strand_features)
+                if not cds:
+                    print err_no_cds
+                    return
+                cds = cds[0] # get object from list
                 cds_id = cds.qualifiers['label'][0].lower()
                 cds_category = gene_map[cds_id]
 
