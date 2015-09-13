@@ -10,7 +10,61 @@ import re
 from GenomeDiffSequenceMap import GenomeDiffSequenceMap
 
 
-"""Pares genomediff files for statistical information about sample mutations.
+"""parse_file_data(): parses information contained within .gd files.
+
+
+This function encapsulates the map update functionality of the program to simplify the map update process.
+@input: data from a GenomeDiff file
+@output: GenomeDiffSequenceMap object
+"""
+
+
+def parse_file_data(data, mutation_map, features):
+    for line in data:
+        # Update total count
+        mutation_map.update_count()
+
+        split_line = re.split("\t", line)
+
+        # Common fields
+        mut_type = split_line[0]
+        ref_seq = split_line[3] # Plasmid sequence name
+
+        # Unique fields
+        position = ""
+        size = ""
+        repeat_seq = ""
+        repeat_length = ""
+        repeat_ref_num = ""
+        repeat_new_copies = ""
+        repeat_name = ""
+        strand = ""
+        # duplication_size = ""
+
+        # Update count based on mutation type
+        mutation_map.update_type_map(mut_type)
+
+        if ("MC" in mut_type): # Missing coverage follows unique format
+            #code to handle missing coverage to appear in later versions
+            pass
+
+        position = int(split_line[4])
+
+        # Update count based on feature
+        containing_feature = filter(lambda feat: position in feat.location, features)
+        if (containing_feature):
+            containing_feature_type = containing_feature[0].type
+        else: # not within an annotation
+            containing_feature_type = 'None'
+        mutation_map.update_feature_map(containing_feature_type)
+
+        # Update other counts based on detailed mappings
+        mutation_map.update_type_feat_map(mut_type, containing_feature_type)
+        mutation_map.update_feat_type_map(containing_feature_type, mut_type)
+
+        return mutation_map
+
+"""Parse genomediff files for statistical information about sample mutations.
 
 This function defines input/output directories  used to gather
 count-based data on mutations.
@@ -24,6 +78,7 @@ def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
     # Define string constants
     err_no_plasmid = "Error: no plasmid file found: "
     err_no_cds = "Error: no cds found in current template."
+    err_no_category = "Error: sample category not defined."
 
     # Enumerated lists
     cfp_genes = ("bba_e0020",)
@@ -73,59 +128,21 @@ def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
                 cds = filter(lambda feat: feat.type == "CDS" and (feat.qualifiers['label'][0]).lower() in cds_tuple, top_strand_features)
                 if not cds:
                     print err_no_cds
-                    return
+                    continue
                 cds = cds[0] # get object from list
                 cds_id = cds.qualifiers['label'][0].lower()
                 cds_category = gene_map[cds_id]
+                if not cat_map[cds_category]:
+                    print err_no_category
+                    continue
 
-                # Use this for all further count updates
-                mutation_map = cat_map[cds_category]
-
-                for line in data:
-                    # Update total count
-                    mutation_map.update_count()
-
-                    split_line = re.split("\t", line)
-
-                    # Common fields
-                    mut_type = split_line[0]
-                    ref_seq = split_line[3] # Plasmid sequence name
-
-                    # Unique fields
-                    position = ""
-                    size = ""
-                    repeat_seq = ""
-                    repeat_length = ""
-                    repeat_ref_num = ""
-                    repeat_new_copies = ""
-                    repeat_name = ""
-                    strand = ""
-                    # duplication_size = ""
-
-                    # Update count based on mutation type
-                    mutation_map.update_type_map(mut_type)
-
-                    if ("MC" in mut_type): # Missing coverage follows unique format
-                        #code to handle missing coverage to appear in later versions
-                        pass
-
-                    position = int(split_line[4])
-
-                    # Update count based on feature (precondition: mutation has position)
-                    containing_feature = filter(lambda feat: position in feat.location, top_strand_features)[0]
-                    containing_feature_type = containing_feature.type
-                    mutation_map.update_feature_map(containing_feature_type)
-
-                    # Update other counts based on detailed mappings
-                    mutation_map.update_type_feat_map(mut_type, containing_feature_type)
-                    mutation_map.update_feat_type_map(containing_feature_type, mut_type)
-
-                    print "Done."
-                # Outside loop: update map
-                cat_map[cds_category] = mutation_map
+                temp_map = parse_file_data(data, cat_map[cds_category], top_strand_features)
+                if (temp_map):
+                    cat_map[cds_category] = temp_map
 
 
-    print cat_map.keys()
+
+
     return cat_map
 
 
@@ -262,9 +279,12 @@ def main():
         new_map = parse_files_cds(cat_map, user_input_dir, user_output_dir, user_plasmid_dir)
         total_count = 0
         for k in new_map.keys():
-            total_count += new_map[k].get_count()
+            print "Count for category", k + ": " + str(new_map[k].get_count())
+            print "Types:"
+            for type in new_map[k].type_map.keys():
+                print type + ": " +  str(new_map[k].type_map[type])
 
-        print "total count:", total_count
+       # print "total count:", total_count
 
 
     return
