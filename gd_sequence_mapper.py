@@ -9,7 +9,45 @@ import os
 import re
 from GenomeDiffSequenceMap import GenomeDiffSequenceMap
 
+"""get_category(): Return a key to use in the mapping structure that exists in the caller.
 
+
+This function takes input in the form of an open file handle (GenomeDiff file), the current template, features, and a
+categorization number which determines the logic for determining the key string to return."""
+def get_category(data, current_record, top_strand_features, categorization_number):
+
+     # Error strings
+    err_no_cds = "Error: no cds found in current template."
+
+    # Enumerated lists
+    cfp_genes = ("bba_e0020",)
+    yfp_genes = ("bba_e0030", "bba_k592101", "bba_k864100")
+    bfp_genes = ("bba_k592100",)
+    cds_tuple = tuple(tuple(cfp_genes) + tuple(yfp_genes) + tuple(bfp_genes))
+
+    identified_category = '' # we will use this as key in map in calling function
+    if categorization_number == 1 or categorization_number == 2:
+        # Map genes to category (this can be moved in future versions)
+        gene_map = dict()
+        for item in cfp_genes:
+            gene_map[item.lower()] = "CFP"
+        for item in yfp_genes:
+            gene_map[item.lower()] = "YFP"
+        for item in bfp_genes:
+            gene_map[item.lower()] = "BFP"
+
+        # Get type of CDS
+        cds = filter(lambda feat: feat.type == "CDS" and (feat.qualifiers['label'][0]).lower() in cds_tuple, top_strand_features)
+        if not cds:
+            print err_no_cds
+            return 'None'
+        cds = cds[0] # get object from list
+        cds_id = cds.qualifiers['label'][0].lower()
+        if categorization_number ==1:
+            identified_category = gene_map[cds_id]
+        identified_category = cds_id
+
+    return identified_category
 """parse_file_data(): parses information contained within .gd files.
 
 
@@ -28,6 +66,7 @@ def parse_file_data(data, mutation_map, features):
 
         # Common fields
         mut_type = split_line[0]
+        print mut_type
         ref_seq = split_line[3] # Plasmid sequence name
 
         # Unique fields
@@ -44,7 +83,7 @@ def parse_file_data(data, mutation_map, features):
         # Update count based on mutation type
         mutation_map.update_type_map(mut_type)
 
-        if ("MC" in mut_type): # Missing coverage follows unique format
+        if (mut_type == "MC"): # Missing coverage follows unique format
             #code to handle missing coverage to appear in later versions
             pass
 
@@ -72,27 +111,12 @@ count-based data on mutations.
 Precondition: Correctly formatted Genomediff files with tab-separated fields."""
 
 
-def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
+def parse_files_cds(cat_map, categorization_number, input_dir, output_dir, plasmid_dir):
     """Parse information from .gd files into a map organized by CDS."""
 
     # Define string constants
     err_no_plasmid = "Error: no plasmid file found: "
-    err_no_cds = "Error: no cds found in current template."
     err_no_category = "Error: sample category not defined."
-
-    # Enumerated lists
-    cfp_genes = ("bba_e0020",)
-    yfp_genes = ("bba_e0030", "bba_k592101", "bba_k864100")
-    bfp_genes = ("bba_k592100",)
-    cds_tuple = tuple(tuple(cfp_genes) + tuple(yfp_genes) + tuple(bfp_genes))
-    # Map genes to category (this can be moved in future versions)
-    gene_map = dict()
-    for item in cfp_genes:
-        gene_map[item.lower()] = "CFP"
-    for item in yfp_genes:
-        gene_map[item.lower()] = "YFP"
-    for item in bfp_genes:
-        gene_map[item.lower()] = "BFP"
 
     print "Scanning input directory..."
     file_count = 0
@@ -111,34 +135,22 @@ def parse_files_cds(cat_map, input_dir, output_dir, plasmid_dir):
                 if not(second_line): # no mutations
                     print "No mutations."
                     continue
+                data.seek(18) # return to beginning of second line
                 ref_seq_name = (re.split("\t", second_line)[3]).lower()
                 current_record = SeqIO.read(plasmid_dir+ref_seq_name+".gb", "genbank")
                 if not(current_record):
                     print err_no_plasmid + ref_seq_name + "\n"
                     continue
-
-                current_record_features = current_record.features
-
-                # Gather information common to all mutations in this .gd file
-
                 # Filter by strand (no duplicate features)
-                top_strand_features = filter(lambda item: item.strand == 1, current_record_features)
-
-                # Get type of CDS
-                cds = filter(lambda feat: feat.type == "CDS" and (feat.qualifiers['label'][0]).lower() in cds_tuple, top_strand_features)
-                if not cds:
-                    print err_no_cds
-                    continue
-                cds = cds[0] # get object from list
-                cds_id = cds.qualifiers['label'][0].lower()
-                cds_category = gene_map[cds_id]
-                if not cat_map[cds_category]:
+                top_strand_features = filter(lambda item: item.strand == 1, current_record.features)
+                # Determine category key in category map
+                category = get_category(data, current_record, top_strand_features, categorization_number)
+                if not cat_map[category]:
                     print err_no_category
                     continue
-
-                temp_map = parse_file_data(data, cat_map[cds_category], top_strand_features)
+                temp_map = parse_file_data(data, cat_map[category], top_strand_features)
                 if (temp_map):
-                    cat_map[cds_category] = temp_map
+                    cat_map[category] = temp_map
 
 
 
@@ -183,6 +195,12 @@ def main():
     # Category defaults (add more in later version)
     cds_categories = ("YFP", "BFP", "CFP")
 
+    # Enumerated lists
+    cfp_genes = ("bba_e0020",)
+    yfp_genes = ("bba_e0030", "bba_k592101", "bba_k864100")
+    bfp_genes = ("bba_k592100",)
+    cds_tuple = tuple(tuple(cfp_genes) + tuple(yfp_genes) + tuple(bfp_genes))
+
     # Defaults for user input
     INPUT_DIR_DEFAULT = "genomediff/"
     OUTPUT_DIR_DEFAULT = "output/"
@@ -195,12 +213,13 @@ def main():
     done = False
     while not(done):
         cat_num = input(("1. By coding sequence type (uses iGEM Spring 2015 CDS list)\n" +
-                         "2. By promoter strength\n" +
-                         "3. By RBS strength\n"))
-        if (cat_num < 1 or cat_num > 3):
+                         "2. By specific CDS (iGEM Spring 2015 CDS list)\n" +
+                         "3. By promoter strength\n" +
+                         "4. By RBS strength\n"))
+        if (cat_num < 1 or cat_num > 4):
             print err_bad_category
             continue
-        elif (cat_num == 1):
+        elif(cat_num in range(1, 5)):
             done = True
         else:
             print err_bad_category
@@ -267,25 +286,28 @@ def main():
                     continue
 
     # Create the maps organized by category.
-
+    categorization_number = 0
     # Categorize by CDS
     if (cat_num == 1):
         # Initialize each dictionary containing
-        print "Initializing mutation tables...\r"
-        for category in cds_categories:
+        for category in cds_tuple:
             cat_map[category] = GenomeDiffSequenceMap()
-        print "done."
-        print "Parsing genomediff files.\n"
-        new_map = parse_files_cds(cat_map, user_input_dir, user_output_dir, user_plasmid_dir)
-        total_count = 0
-        for k in new_map.keys():
-            print "Count for category", k + ": " + str(new_map[k].get_count())
-            print "Types:"
-            for type in new_map[k].type_map.keys():
-                print type + ": " +  str(new_map[k].type_map[type])
+        categorization_number = 1
 
-       # print "total count:", total_count
+    # Categorize by specific CDS
+    if (cat_num == 2):
+        for cds in cds_tuple:
+            cat_map[cds] = GenomeDiffSequenceMap()
+        categorization_number = 2
 
+
+    print "Parsing genomediff files.\n"
+    new_map = parse_files_cds(cat_map, categorization_number, user_input_dir, user_output_dir, user_plasmid_dir)
+    total_count = 0
+    for k in new_map.keys():
+        header= "Mutation counts in category " + k + ": "
+        new_map[k].output(header, "output.txt")
+   # print "total count:", total_count
 
     return
 
