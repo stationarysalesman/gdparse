@@ -32,29 +32,24 @@ class GenomeDiffSequenceMap:
     def get_count(self):
         return self.total_count
 
-    def output(self, header, filename):
-        stdout = sys.stdout
-        with open(filename, 'a') as sys.stdout:
-            print header
-            print "Total mutation count: ", str(self.total_count)
-            print "Mutations indexed by type:"
-            for type in self.type_map:
-                print type + ": " + str(self.type_map[type])
-            print "Mutations indexed by containing feature:"
-            for feat in self.feat_map:
-                print feat + ": " + str(self.feat_map[feat])
-            print "Mutations indexed by type, organized by containing feature:"
-            for type in self.type_feat_map:
-                print type + ": "
-                for feat in self.type_feat_map[type]:
-                    print "\t" + feat + ": " + str(self.type_feat_map[type][feat])
-            print "Mutations indexed by containing feature, organized by type:"
-            for feat in self.feat_type_map:
-                print feat + ": "
-                for type in self.feat_type_map[feat]:
-                    print "\t" + type + ": " + str(self.feat_type_map[feat][type])
-            sys.stdout = stdout
-        return
+    def output(self):
+
+        mob_count = 0
+        del_count = 0
+        ins_count = 0
+        snp_count = 0
+        for type in self.type_map:
+            if type == 'MOB':
+                mob_count += self.type_map[type]
+            if type == 'INS':
+                ins_count += self.type_map[type]
+            if type == 'DEL':
+                del_count += self.type_map[type]
+            if type == 'SNP':
+                snp_count += self.type_map[type]
+        total_count = self.total_count
+
+        return [mob_count, ins_count, del_count, snp_count]
     def update_count(self):
         self.total_count += 1
         return

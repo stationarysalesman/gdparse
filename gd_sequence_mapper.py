@@ -304,9 +304,34 @@ def main():
     print "Parsing genomediff files.\n"
     new_map = parse_files_cds(cat_map, categorization_number, user_input_dir, user_output_dir, user_plasmid_dir)
     total_count = 0
-    for k in new_map.keys():
-        header= "Mutation counts in category " + k + ": "
-        new_map[k].output(header, "output.txt")
+    snp = 0
+    snp_total = 0
+    mob = 0
+    mob_total = 0
+    ins = 0
+    ins_total = 0
+    deletions = 0
+    deletions_total = 0
+    with open("output.csv", "a") as of:
+        header= ",MOB,INS,DEL,SNP,TOTAL\n"
+        of.write(header)
+        for k in new_map.keys():
+            data_lst = new_map[k].output()
+            mob = data_lst[0]
+            ins = data_lst[1]
+            deletions = data_lst[2]
+            snp = data_lst[3]
+            current_total = mob + ins + deletions + snp
+            # Update totals
+            mob_total += mob
+            ins_total += ins
+            deletions_total += deletions
+            snp_total += snp
+            total_count += current_total
+            data_write = str(k) + "," + str(mob) + "," + str(ins) + "," + str(deletions) + "," + str(snp) + "," + str(current_total) + "\n"
+            of.write(data_write)
+        totals_row = "TOTALS," + str(mob_total) + "," + str(ins_total) + "," + str(deletions_total) + "," + str(snp_total) + "," + str(total_count) + "\n"
+        of.write(totals_row)
    # print "total count:", total_count
 
     return
