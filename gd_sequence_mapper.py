@@ -57,16 +57,19 @@ This function encapsulates the map update functionality of the program to simpli
 """
 
 
-def parse_file_data(data, mutation_map, features):
+def parse_file_data(data, mutation_map, features, category):
+    # Get cutoff
+    cutoff = ""
+    curr_cds = filter(lambda feat: category in (feat.qualifiers['label'][0]).lower(), features)[0]
+    if curr_cds:
+        cutoff = int(curr_cds.location.end) - 400
     for line in data:
-        # Update total count
-        mutation_map.update_count()
 
         split_line = re.split("\t", line)
 
         # Common fields
         mut_type = split_line[0]
-        print mut_type
+
         ref_seq = split_line[3] # Plasmid sequence name
 
         # Unique fields
@@ -80,28 +83,33 @@ def parse_file_data(data, mutation_map, features):
         strand = ""
         # duplication_size = ""
 
-        # Update count based on mutation type
-        mutation_map.update_type_map(mut_type)
 
         if (mut_type == "MC"): # Missing coverage follows unique format
             #code to handle missing coverage to appear in later versions
             pass
 
         position = int(split_line[4])
-
+        if cutoff and (position > cutoff):
+            continue
         # Update count based on feature
         containing_feature = filter(lambda feat: position in feat.location, features)
         if (containing_feature):
             containing_feature_type = containing_feature[0].type
-        else: # not within an annotation
-            containing_feature_type = 'None'
+        else: # not within an annotation; we are currently ignoring these
+            #containing_feature_type = 'None'
+            continue
         mutation_map.update_feature_map(containing_feature_type)
 
         # Update other counts based on detailed mappings
         mutation_map.update_type_feat_map(mut_type, containing_feature_type)
         mutation_map.update_feat_type_map(containing_feature_type, mut_type)
 
-        return mutation_map
+        # Update count based on mutation type
+        mutation_map.update_type_map(mut_type)
+        # Update total count
+        mutation_map.update_count()
+
+    return mutation_map
 
 """Parse genomediff files for statistical information about sample mutations.
 
@@ -148,7 +156,8 @@ def parse_files_cds(cat_map, categorization_number, input_dir, output_dir, plasm
                 if not cat_map[category]:
                     print err_no_category
                     continue
-                temp_map = parse_file_data(data, cat_map[category], top_strand_features)
+                temp_map = parse_file_data(data, cat_map[category], top_strand_features, category)
+                print "found", temp_map.get_count(), "mutations in sample", str(gdFile)
                 if (temp_map):
                     cat_map[category] = temp_map
 
@@ -304,31 +313,24 @@ def main():
     print "Parsing genomediff files.\n"
     new_map = parse_files_cds(cat_map, categorization_number, user_input_dir, user_output_dir, user_plasmid_dir)
     total_count = 0
-    snp = 0
     snp_total = 0
-    mob = 0
     mob_total = 0
-    ins = 0
     ins_total = 0
-    deletions = 0
     deletions_total = 0
     with open("output.csv", "a") as of:
         header= ",MOB,INS,DEL,SNP,TOTAL\n"
         of.write(header)
         for k in new_map.keys():
             data_lst = new_map[k].output()
-            mob = data_lst[0]
-            ins = data_lst[1]
-            deletions = data_lst[2]
-            snp = data_lst[3]
-            current_total = mob + ins + deletions + snp
+
             # Update totals
-            mob_total += mob
-            ins_total += ins
-            deletions_total += deletions
-            snp_total += snp
-            total_count += current_total
-            data_write = str(k) + "," + str(mob) + "," + str(ins) + "," + str(deletions) + "," + str(snp) + "," + str(current_total) + "\n"
+            mob_total += data_lst[0]
+            ins_total += data_lst[1]
+            deletions_total += data_lst[2]
+            snp_total += data_lst[3]
+            curr_total = data_lst[0] + data_lst[1] + data_lst[2] + data_lst[3]
+            total_count += curr_total
+            data_write = str(k) + "," + str(data_lst[0]) + "," + str(data_lst[1]) + "," + str(data_lst[2]) + "," + str(data_lst[3]) + "," + str(curr_total) + "\n"
             of.write(data_write)
         totals_row = "TOTALS," + str(mob_total) + "," + str(ins_total) + "," + str(deletions_total) + "," + str(snp_total) + "," + str(total_count) + "\n"
         of.write(totals_row)
