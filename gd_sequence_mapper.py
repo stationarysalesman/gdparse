@@ -22,6 +22,7 @@ This file is part of gdparse.
 from Bio import SeqIO
 import os
 import re
+from collections import Counter
 from GenomeDiffSequenceMap import GenomeDiffSequenceMap
 
 """get_category(): Return a key to use in the mapping structure that exists in the caller.
@@ -74,10 +75,11 @@ This function encapsulates the map update functionality of the program to simpli
 
 def parse_file_data(data, mutation_map, features, category):
     # Get cutoff
-    cutoff = ""
+    cutoff = None
     curr_cds = filter(lambda feat: category in (feat.qualifiers['label'][0]).lower(), features)[0]
     if curr_cds:
-        cutoff = int(curr_cds.location.end) - 400
+        cutoff = int(curr_cds.location.end) - 300
+        print "cutting off at", str(cutoff)
     for line in data:
 
         split_line = re.split("\t", line)
@@ -104,20 +106,33 @@ def parse_file_data(data, mutation_map, features, category):
             pass
 
         position = int(split_line[4])
+        # Ignore mutations after the cutoff
         if cutoff and (position > cutoff):
             continue
         # Update count based on feature
+        containing_feature_type = None
+        containing_feature_label = None
         containing_feature = filter(lambda feat: position in feat.location, features)
         if (containing_feature):
             containing_feature_type = containing_feature[0].type
-        else: # not within an annotation; we are currently ignoring these
+            containing_feature_label = containing_feature[0].qualifiers['label'][0]
+            if 'BBa_K608002' in containing_feature_label:
+                print "found problem in", data, "at nt pos", str(position)
+        else: # not within an annotation; we are currently counting these
             #containing_feature_type = 'None'
-            continue
-        mutation_map.update_feature_map(containing_feature_type)
+            containing_feature_type = "None"
+            containing_feature_label = "None"
+            print "Found mutation outside of annotations."
+            print "IN:", str(data)
+            print "TYPE:", mut_type
+            print "AT:", str(position)
+        mutation_map.update_feature_map(containing_feature_label)
+        """Add a mapping of this label to its type for output."""
+        mutation_map.update_label_type_map(containing_feature_label, containing_feature_type)
 
         # Update other counts based on detailed mappings
-        mutation_map.update_type_feat_map(mut_type, containing_feature_type)
-        mutation_map.update_feat_type_map(containing_feature_type, mut_type)
+        mutation_map.update_type_feat_map(mut_type, containing_feature_label)
+        mutation_map.update_feat_type_map(containing_feature_label, mut_type)
 
         # Update count based on mutation type
         mutation_map.update_type_map(mut_type)
@@ -151,12 +166,10 @@ def parse_files_cds(cat_map, categorization_number, input_dir, output_dir, plasm
     for dirName, subdirList, fileList in os.walk(input_dir):
         for gdFile in fileList:
             with open(input_dir+gdFile, "r") as data:
-                print gdFile, "...\r"
                 # Obtain a SeqRecord containing all info from Genbank file
                 first_line = data.readline()
                 second_line = data.readline()
                 if not(second_line): # no mutations
-                    print "No mutations."
                     continue
                 data.seek(18) # return to beginning of second line
                 ref_seq_name = (re.split("\t", second_line)[3]).lower()
@@ -172,7 +185,7 @@ def parse_files_cds(cat_map, categorization_number, input_dir, output_dir, plasm
                     print err_no_category
                     continue
                 temp_map = parse_file_data(data, cat_map[category], top_strand_features, category)
-                print "found", temp_map.get_count(), "mutations in sample", str(gdFile)
+                
                 if (temp_map):
                     cat_map[category] = temp_map
 
@@ -182,6 +195,37 @@ def parse_files_cds(cat_map, categorization_number, input_dir, output_dir, plasm
     return cat_map
 
 
+def parse_file_labels(cat_map, input_dir, output_dir, plasmid_dir):
+    """Parse samples based on labels."""
+    print "Scanning input directory..."
+    file_count = 0
+    for dirName, subdirList, fileList in os.walk(input_dir):
+        for f in fileList:
+            file_count +=1
+    print "Found", file_count, "files."
+    print "Processing files:"
+    for dirName, subdirList, fileList in os.walk(input_dir):
+        for gdFile in fileList:
+            with open(input_dir+gdFile, "r") as data:
+                print gdFile, "...\r"
+                # Obtain a SeqRecord containing all info from Genbank file
+                first_line = data.readline()
+                second_line = data.readline()
+                if not(second_line): # no mutations
+                    continue
+                data.seek(18) # return to beginning of second line
+                ref_seq_name = (re.split("\t", second_line)[3]).lower()
+                current_record = SeqIO.read(plasmid_dir+ref_seq_name+".gb", "genbank")
+                if not(current_record):
+                    print "nope: " + ref_seq_name + "\n"
+                    continue
+                # Filter by strand (no duplicate features)
+                top_strand_features = filter(lambda item: item.strand == 1, current_record.features)
+                temp_map = parse_file_data(data, cat_map['all'], top_strand_features, 'CDS')
+                if temp_map:
+                    cat_map['all'] = temp_map
+
+    return cat_map
 """Map individual reference sequences onto their respective category.
 
 
@@ -238,7 +282,7 @@ def main():
     while not(done):
         cat_num = input(("1. By coding sequence type (uses iGEM Spring 2015 CDS list)\n" +
                          "2. By specific CDS (iGEM Spring 2015 CDS list)\n" +
-                         "3. By promoter strength\n" +
+                         "3. By label\n" +
                          "4. By RBS strength\n"))
         if (cat_num < 1 or cat_num > 4):
             print err_bad_category
@@ -251,7 +295,8 @@ def main():
     done = False
     user_plasmid_dir = ""
     while not(done):
-        user_input = raw_input("Please specify the plasmid directory path.\n1. Default directory (local)\n2. Custom\n")
+        user_input = raw_input("Please specify the plasmid directory path.\n1. Default directory "+
+                               "(local)\n2. Custom\n")
         if (user_input == "1"):
             user_plasmid_dir = PLASMID_DIR_DEFAULT
             done = True
@@ -269,7 +314,8 @@ def main():
     done = False
     user_input_dir = ""
     while not(done):
-        user_input = raw_input("Please enter the input directory path.\n1. Default directory (local)\n2. Custom\n")
+        user_input = raw_input("Please enter the input directory path.\n1. Default directory (local)\n2. " +
+                               "Custom\n")
         if (user_input == "1"):
             user_input_dir = INPUT_DIR_DEFAULT
             done = True
@@ -288,7 +334,8 @@ def main():
     done = False
     user_output_dir = ""
     while not(done):
-        user_input = raw_input("Please enter the output directory path.\n1. Default directory (local)\n2. Custom\n")
+        user_input = raw_input("Please enter the output directory path.\n1. Default directory (local)\n2. " +
+                               "Custom\n")
         if (user_input == "1"):
             user_output_dir = OUTPUT_DIR_DEFAULT
             done = True
@@ -324,9 +371,65 @@ def main():
             cat_map[cds] = GenomeDiffSequenceMap()
         categorization_number = 2
 
+    # Categorize by label
+    if (cat_num == 3):
+        cat_map['all'] = GenomeDiffSequenceMap()
+        categorization_number = 3
 
+    new_map = None
     print "Parsing genomediff files.\n"
-    new_map = parse_files_cds(cat_map, categorization_number, user_input_dir, user_output_dir, user_plasmid_dir)
+    if categorization_number < 3:
+        new_map = parse_files_cds(cat_map, categorization_number, user_input_dir, user_output_dir,
+                                  user_plasmid_dir)
+    elif categorization_number == 3:
+        new_map = parse_file_labels(cat_map, user_input_dir, user_output_dir, user_plasmid_dir)
+
+    done = False
+    user_input = ""
+    while not(done):
+        user_input = raw_input("Choose output type.\n1. CSV: Organize by mutation type\n2. " +
+                               "CSV: Organize by label\n")
+        if (user_input == "1"):
+            output_muttype_csv()
+            done = True
+            continue
+        if (user_input == "2"):
+            output_label_csv(new_map)
+            done = True
+            continue
+
+
+def output_label_csv(new_map):
+
+    master_feat_type_map = dict()
+    master_counter = Counter(master_feat_type_map)
+    x = 1
+    for k in new_map.keys():
+        with open("output"+str(x)+".csv", "a") as of:
+            header= ",MOB,INS,DEL,SNP,TOTAL\n"
+            of.write(header)
+            for feat in new_map[k].feat_type_map.keys():
+                curr_mob_count = 0
+                curr_ins_count = 0
+                curr_del_count = 0
+                curr_snp_count = 0
+                curr_feat = new_map[k].feat_type_map[feat]
+                if 'MOB' in curr_feat:
+                    curr_mob_count = curr_feat['MOB']
+                if 'INS' in curr_feat:
+                    curr_ins_count = curr_feat['INS']
+                if 'DEL' in curr_feat:
+                    curr_del_count = curr_feat['DEL']
+                if 'SNP' in curr_feat:
+                    curr_snp_count = curr_feat['SNP']
+                data_write = (str(feat) + "," + str(curr_mob_count) + "," + str(curr_ins_count) + "," +
+                              str(curr_del_count) + "," + str(curr_snp_count) + "\n")
+                of.write(data_write)
+        x += 1
+    return
+
+def output_muttype_csv(new_map):
+
     total_count = 0
     snp_total = 0
     mob_total = 0
@@ -336,8 +439,8 @@ def main():
         header= ",MOB,INS,DEL,SNP,TOTAL\n"
         of.write(header)
         for k in new_map.keys():
-            data_lst = new_map[k].output()
-
+            data_lst = new_map[k].output_type_csv()
+            print new_map[k].feat_type_map
             # Update totals
             mob_total += data_lst[0]
             ins_total += data_lst[1]
@@ -345,11 +448,15 @@ def main():
             snp_total += data_lst[3]
             curr_total = data_lst[0] + data_lst[1] + data_lst[2] + data_lst[3]
             total_count += curr_total
-            data_write = str(k) + "," + str(data_lst[0]) + "," + str(data_lst[1]) + "," + str(data_lst[2]) + "," + str(data_lst[3]) + "," + str(curr_total) + "\n"
+            data_write = (str(k) + "," + str(data_lst[0]) + "," + str(data_lst[1]) + "," + str(data_lst[2]) +
+            "," + str(data_lst[3]) + "," + str(curr_total) + "\n")
             of.write(data_write)
-        totals_row = "TOTALS," + str(mob_total) + "," + str(ins_total) + "," + str(deletions_total) + "," + str(snp_total) + "," + str(total_count) + "\n"
+        totals_row = ("TOTALS," + str(mob_total) + "," + str(ins_total) + "," + str(deletions_total) + "," +
+        str(snp_total) + "," + str(total_count) + "\n")
+        
         of.write(totals_row)
-   # print "total count:", total_count
+   # Output mutations organized by feature
+   
 
     return
 

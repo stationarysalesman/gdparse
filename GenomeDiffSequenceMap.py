@@ -39,6 +39,7 @@ class GenomeDiffSequenceMap:
         self.feat_map = dict()
         self.type_feat_map = dict()
         self.feat_type_map = dict()
+        self.label_type_map = dict()
 
         # Initialize all counts to 0.
         self.total_count = 0
@@ -47,33 +48,57 @@ class GenomeDiffSequenceMap:
     def get_count(self):
         return self.total_count
 
-    def output(self):
+    def output_type_csv(self):
 
         mob_count = 0
         del_count = 0
         ins_count = 0
         snp_count = 0
-        for type in self.type_map:
-            if type == 'MOB':
-                mob_count += self.type_map[type]
-            if type == 'INS':
-                ins_count += self.type_map[type]
-            if type == 'DEL':
-                del_count += self.type_map[type]
-            if type == 'SNP':
-                snp_count += self.type_map[type]
+        for _type in self.type_map:
+            if _type == 'MOB':
+                mob_count += self.type_map[_type]
+            if _type == 'INS':
+                ins_count += self.type_map[_type]
+            if _type == 'DEL':
+                del_count += self.type_map[_type]
+            if _type == 'SNP':
+                snp_count += self.type_map[_type]
         total_count = self.total_count
 
         return [mob_count, ins_count, del_count, snp_count]
+
+    def output_label_csv(self):
+        
+        output_dict = dict()
+        for label in self.feat_type_map:
+            mob_count = 0
+            del_count = 0
+            ins_count = 0
+            snp_count = 0
+            for _type in self.feat_type_map[label]:
+                if _type == 'MOB':
+                    mob_count += self.type_map[_type]
+                if _type == 'INS':
+                    ins_count += self.type_map[_type]
+                if _type == 'DEL':
+                    del_count += self.type_map[_type]
+                if _type == 'SNP':
+                    snp_count += self.type_map[_type]
+            output_dict[label] = [mob_count, ins_count, del_count, snp_count]
+        total_count = self.total_count
+
+        return [mob_count, ins_count, del_count, snp_count]
+        
+    
     def update_count(self):
         self.total_count += 1
         return
 
-    def update_type_map(self, type):
-        if type in self.type_map.keys():
-            self.type_map[type] += 1
+    def update_type_map(self, _type):
+        if _type in self.type_map.keys():
+            self.type_map[_type] += 1
         else:
-            self.type_map.update({type:1})
+            self.type_map.update({_type:1})
         return
 
     def update_feature_map(self, feat):
@@ -83,29 +108,34 @@ class GenomeDiffSequenceMap:
             self.feat_map.update({feat:1})
         return
 
-    def update_type_feat_map(self, type, feat):
-        if type in self.type_feat_map.keys():
-            if feat in self.type_feat_map[type]:
+    def update_label_type_map(self, label, _type):
+        if label in self.label_type_map.keys():
+            return
+        else:
+            self.label_type_map.update({label:_type})
+    def update_type_feat_map(self, _type, feat):
+        if _type in self.type_feat_map.keys():
+            if feat in self.type_feat_map[_type]:
                 # Both keys exist in respective dictionaries
-                self.type_feat_map[type][feat] += 1
+                self.type_feat_map[_type][feat] += 1
             else:
                 # Need to add key 'feat' to type_feat_map[type] dict
-                self.type_feat_map[type].update({feat:1})
+                self.type_feat_map[_type].update({feat:1})
         # Must create type dictionary
         else:
-            self.type_feat_map.update({type:dict()})
-            self.type_feat_map[type].update({feat:1})
+            self.type_feat_map.update({_type:dict()})
+            self.type_feat_map[_type].update({feat:1})
         return
 
-    def update_feat_type_map(self, feat, type):
+    def update_feat_type_map(self, feat, _type):
         if feat in self.feat_type_map.keys():
-            if type in self.feat_type_map[feat].keys():
+            if _type in self.feat_type_map[feat].keys():
                 # Both keys exist
-                self.feat_type_map[feat][type] += 1
+                self.feat_type_map[feat][_type] += 1
             else:
-                self.feat_type_map[feat].update({type:1})
+                self.feat_type_map[feat].update({_type:1})
         # Create dictionaries
         else:
             self.feat_type_map.update({feat:dict()})
-            self.feat_type_map[feat].update({type:1})
+            self.feat_type_map[feat].update({_type:1})
         return
